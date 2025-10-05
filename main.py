@@ -1,28 +1,28 @@
-# main.py — minimal FastAPI app for Render root layout
-from fastapi import FastAPI, Header, HTTPException
+# main.py — ViralNOW API (with Swagger "Authorize" button)
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional
-import json
-import os
 
 app = FastAPI(title="ViralNOW API (Root Layout)")
 
+# --- Security (adds the Authorize button) ---
+security = HTTPBearer(auto_error=False)
+
+def require_bearer(creds: Optional[HTTPAuthorizationCredentials] = Depends(security)):
+    if not creds or not creds.scheme.lower() == "bearer" or not creds.credentials:
+        raise HTTPException(status_code=401, detail="Missing or bad token")
+    # TODO: verify JWT if you want (using your JWT_SECRET)
+    return {"user_id": "demo-user", "tier": "free"}
+
+# --- Routes ---
 @app.get("/health")
 def health():
     return {"ok": True}
 
-# very light JWT check (dev-only)
-def get_user_from_auth(authorization: Optional[str]):
-    if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=401, detail="Missing or bad token")
-    return {"user_id": "demo-user", "tier": "free"}
-
 @app.post("/api/analyze")
-async def analyze(payload: dict, authorization: Optional[str] = Header(None)):
-    _ = get_user_from_auth(authorization)
-
-    # If you have a real key set, you could call OpenAI here.
-    # To keep it dead-simple, we return a realistic mock.
+async def analyze(payload: dict, _user = Depends(require_bearer)):
+    # mock response; swap for real OpenAI when ready
     return JSONResponse({
         "ok": True,
         "viral_score": 82,
