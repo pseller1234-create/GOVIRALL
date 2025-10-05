@@ -1,4 +1,4 @@
-# main.py — ViralNOW API (with Swagger "Authorize" button)
+# main.py — ViralNOW API (adds Swagger Authorize)
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -6,23 +6,21 @@ from typing import Optional
 
 app = FastAPI(title="ViralNOW API (Root Layout)")
 
-# --- Security (adds the Authorize button) ---
 security = HTTPBearer(auto_error=False)
 
 def require_bearer(creds: Optional[HTTPAuthorizationCredentials] = Depends(security)):
-    if not creds or not creds.scheme.lower() == "bearer" or not creds.credentials:
+    if not creds or creds.scheme.lower() != "bearer" or not creds.credentials:
         raise HTTPException(status_code=401, detail="Missing or bad token")
-    # TODO: verify JWT if you want (using your JWT_SECRET)
+    # TODO: verify JWT with your JWT_SECRET if you want strict auth
     return {"user_id": "demo-user", "tier": "free"}
 
-# --- Routes ---
 @app.get("/health")
 def health():
     return {"ok": True}
 
 @app.post("/api/analyze")
 async def analyze(payload: dict, _user = Depends(require_bearer)):
-    # mock response; swap for real OpenAI when ready
+    # mock response for now
     return JSONResponse({
         "ok": True,
         "viral_score": 82,
