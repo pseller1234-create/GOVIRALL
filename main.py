@@ -1,112 +1,134 @@
-   return callback(*args, **kwargs)
-  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/uvicorn/main.py", line 423, in main
-    run(
-    ~~~^
-        app,
-        ^^^^
-    ...<46 lines>...
-        h11_max_incomplete_event_size=h11_max_incomplete_event_size,
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+# main.py — ViralNOW API (Render-ready, clean)
+from __future__ import annotations
+import os, json, re
+from typing import Optional, Dict, Any
+
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
+app = FastAPI(title="ViralNOW API")
+
+# CORS (open for now; tighten to your domain later)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ---- Auth: adds Swagger "Authorize" button ----
+security = HTTPBearer(auto_error=False)
+JWT_SECRET = os.getenv("JWT_SECRET", "change_me_to_a_long_random_string")
+
+def require_bearer(creds: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> Dict[str, Any]:
+    if not creds or creds.scheme.lower() != "bearer" or not creds.credentials:
+        raise HTTPException(status_code=401, detail="Missing or bad token")
+    # (Optional strict JWT verify)
+    # from jose import jwt, JWTError
+    # try:
+    #     payload = jwt.decode(creds.credentials, JWT_SECRET, algorithms=["HS256"])
+    # except JWTError:
+    #     raise HTTPException(status_code=401, detail="Invalid token")
+    return {"user": {"sub": "demo-user", "tier": "free"}}
+
+# ---- Health & Home ----
+@app.get("/health")
+def health():
+    return {"ok": True}
+
+@app.get("/")
+def home():
+    return {"status": "ok", "docs": "/docs", "health": "/health"}
+
+# ---- OpenAI (real) or mock fallback ----
+USE_OPENAI = bool(os.getenv("OPENAI_API_KEY"))
+if USE_OPENAI:
+    from openai import OpenAI
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
+SYSTEM_PROMPT = (
+    "You are ViralNOW, an elite viral-intelligence engine. "
+    "Return STRICT JSON with keys: viral_score, confidence, why_it_will_hit, "
+    "why_it_wont_hit, improvement_suggestions, hook_variations, "
+    "hook_variations_tagged, recommended_hashtags, best_post_times, "
+    "platform_ranking, next_actions. "
+    "For hooks, include A/B tagging objects like "
+    '{"pattern":"contrarian","text":"..."} . '
+    "Keep summary ≤ 28 words; rationales ≤ 40 words; grade 6–8 readability."
+)
+
+def _safe_json_parse(text: str) -> Dict[str, Any]:
+    try:
+        return json.loads(text)
+    except Exception:
+        m = re.search(r"\{.*\}", text, flags=re.S)
+        if not m:
+            raise
+        return json.loads(m.group(0))
+
+def _mock_response() -> Dict[str, Any]:
+    return {
+        "viral_score": 84,
+        "confidence": "92%",
+        "why_it_will_hit": "Strong first 2s hook, clean captions, beat-matched jump cuts.",
+        "why_it_wont_hit": "Tiny dip around 0:06; CTA only in caption.",
+        "improvement_suggestions": [
+            "Trim 1.0–1.5s from intro",
+            "Add on-screen CTA at 0:04",
+            "End with a share/save prompt",
+        ],
+        "hook_variations": [
+            "I did the opposite—and it worked.",
+            "This myth kills your views.",
+            "Give me 7 seconds.",
+        ],
+        "hook_variations_tagged": [
+            {"pattern": "contrarian", "text": "I did the opposite—and it worked."},
+            {"pattern": "myth_bust", "text": "This myth kills your views."},
+            {"pattern": "countdown", "text": "Give me 7 seconds."},
+        ],
+        "recommended_hashtags": ["#MindsetFuel", "#ViralNOW", "#AIHustle", "#Motivation", "#CreatorTips", "#Shorts"],
+        "best_post_times": ["8:00 PM CST", "11:00 AM CST"],
+        "platform_ranking": {"TikTok": 90, "YouTube": 82, "Instagram": 78, "X": 66},
+        "next_actions": ["Export tighter intro", "Schedule 8 PM CST", "Share score card on profile"],
+    }
+
+@app.post("/api/analyze")
+async def analyze(payload: dict, _auth = Depends(require_bearer)):
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Bad JSON")
+
+    if not USE_OPENAI:
+        return JSONResponse(_mock_response())
+
+    # Real OpenAI path
+    user_envelope = {
+        "instruction": "Return STRICT JSON per contract; no code fences.",
+        "media": payload.get("media", {}),
+        "platform_focus": payload.get("platform_focus", "tiktok"),
+        "controls": {
+            "readability_grade": "6-8",
+            "summary_max_words": 28,
+            "rationale_max_words": 40,
+            "ab_tagging_for_hooks": True,
+        },
+    }
+
+    completion = client.chat.completions.create(
+        model=MODEL,
+        temperature=0.6,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": json.dumps(user_envelope)},
+        ],
     )
-    ^
-  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/uvicorn/main.py", line 593, in run
-    server.run()
-    ~~~~~~~~~~^^
-  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/uvicorn/server.py", line 67, in run
-    return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
-  File "/opt/render/project/python/Python-3.13.4/lib/python3.13/asyncio/runners.py", line 195, in run
-    return runner.run(main)
-           ~~~~~~~~~~^^^^^^
-  File "/opt/render/project/python/Python-3.13.4/lib/python3.13/asyncio/runners.py", line 118, in run
-    return self._loop.run_until_complete(task)
-           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
-  File "uvloop/loop.pyx", line 1518, in uvloop.loop.Loop.run_until_complete
-  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/uvicorn/server.py", line 71, in serve
-    await self._serve(sockets)
-  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/uvicorn/server.py", line 78, in _serve
-    config.load()
-    ~~~~~~~~~~~^^
-  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/uvicorn/config.py", line 438, in load
-    self.loaded_app = import_from_string(self.app)
-                      ~~~~~~~~~~~~~~~~~~^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/uvicorn/importer.py", line 19, in import_from_string
-    module = importlib.import_module(module_str)
-  File "/opt/render/project/python/Python-3.13.4/lib/python3.13/importlib/__init__.py", line 88, in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
-  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
-  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
-  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
-  File "<frozen importlib._bootstrap_external>", line 1022, in exec_module
-  File "<frozen importlib._bootstrap_external>", line 1160, in get_code
-  File "<frozen importlib._bootstrap_external>", line 1090, in source_to_code
-  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
-  File "/opt/render/project/src/main.py", line 34
+    content = completion.choices[0].message.content or "{}"
+    try:
+        data = _safe_json_parse(content)
+    except Exception:
+        data = _mock_response()
+        data["why_it_wont_hit"] = "Model returned non-JSON; served robust fallback."
     return JSONResponse(data)
-    ^^^^^^^^^^^^^^^^^^^^^^^^^
-SyntaxError: 'return' outside function
-==> Exited with status 1
-==> Common ways to troubleshoot your deploy: https://render.com/docs/troubleshooting-deploys
-==> Running 'uvicorn main:app --host 0.0.0.0 --port $PORT'
-Traceback (most recent call last):
-  File "/opt/render/project/src/.venv/bin/uvicorn", line 8, in <module>
-    sys.exit(main())
-             ~~~~^^
-  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/click/core.py", line 1462, in __call__
-    return self.main(*args, **kwargs)
-           ~~~~~~~~~^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/click/core.py", line 1383, in main
-    rv = self.invoke(ctx)
-  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/click/core.py", line 1246, in invoke
-    return ctx.invoke(self.callback, **ctx.params)
-           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/click/core.py", line 814, in invoke
-    return callback(*args, **kwargs)
-  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/uvicorn/main.py", line 423, in main
-    run(
-    ~~~^
-        app,
-        ^^^^
-    ...<46 lines>...
-        h11_max_incomplete_event_size=h11_max_incomplete_event_size,
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/uvicorn/main.py", line 593, in run
-    server.run()
-    ~~~~~~~~~~^^
-  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/uvicorn/server.py", line 67, in run
-    return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
-  File "/opt/render/project/python/Python-3.13.4/lib/python3.13/asyncio/runners.py", line 195, in run
-    return runner.run(main)
-           ~~~~~~~~~~^^^^^^
-  File "/opt/render/project/python/Python-3.13.4/lib/python3.13/asyncio/runners.py", line 118, in run
-    return self._loop.run_until_complete(task)
-           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
-  File "uvloop/loop.pyx", line 1518, in uvloop.loop.Loop.run_until_complete
-  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/uvicorn/server.py", line 71, in serve
-    await self._serve(sockets)
-  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/uvicorn/server.py", line 78, in _serve
-    config.load()
-    ~~~~~~~~~~~^^
-  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/uvicorn/config.py", line 438, in load
-    self.loaded_app = import_from_string(self.app)
-                      ~~~~~~~~~~~~~~~~~~^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.13/site-packages/uvicorn/importer.py", line 19, in import_from_string
-    module = importlib.import_module(module_str)
-  File "/opt/render/project/python/Python-3.13.4/lib/python3.13/importlib/__init__.py", line 88, in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
-  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
-  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
-  File "<frozen importlib._bootstrap>", line 935, in _load_unlocked
-  File "<frozen importlib._bootstrap_external>", line 1022, in exec_module
-  File "<frozen importlib._bootstrap_external>", line 1160, in get_code
-  File "<frozen importlib._bootstrap_external>", line 1090, in source_to_code
-  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
-  File "/opt/render/project/src/main.py", line 34
-    return JSONResponse(data)
-    ^^^^^^^^^^^^^^^^^^^^^^^^^
-SyntaxError: 'return' outside function
