@@ -119,4 +119,13 @@ Unlike typical “analytics” tools, ViralNow focuses on pre-launch prediction 
 
 To become the global standard for viral content prediction — the “credit score” for social media success.
 
+## Ethical Engagement Principles
+
+Daily engagement loops must reinforce creative mastery without manipulation. See [`docs/gamification.md`](docs/gamification.md) for:
+
+- A transparent Engagement Factor formula and disclosure patterns.
+- Time-boxed daily missions with measurable micro-quests and immediate rescoring.
+- Opt-in, user-controlled streaks/leaderboards that prioritize deliberate practice over fear of loss.
+- Positive mechanics such as Craft XP, before/after galleries, and creator baseline cards that celebrate personal progress.
+
 Would you like me to format this next as a Codex manifest / JSON spec (so you can drop it straight into your app.yaml, OpenAI Codex project, or internal repo)? It can include sections like name, description, features, inputs, outputs, and tech_stack.
