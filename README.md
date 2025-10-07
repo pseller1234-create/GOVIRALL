@@ -119,4 +119,6 @@ Unlike typical “analytics” tools, ViralNow focuses on pre-launch prediction 
 
 To become the global standard for viral content prediction — the “credit score” for social media success.
 
-Would you like me to format this next as a Codex manifest / JSON spec (so you can drop it straight into your app.yaml, OpenAI Codex project, or internal repo)? It can include sections like name, description, features, inputs, outputs, and tech_stack.
+## Build Reference
+
+See [`BUILDING_REFERENCE.md`](BUILDING_REFERENCE.md) for the end-to-end platform blueprint, data contracts, roadmap, and deployment notes that support the ViralNow stack.

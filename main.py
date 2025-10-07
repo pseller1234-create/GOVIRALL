@@ -7,6 +7,7 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel, Field
 
 app = FastAPI(title="ViralNOW API")
 
@@ -21,6 +22,42 @@ app.add_middleware(
 # ---- Auth: adds Swagger "Authorize" button ----
 security = HTTPBearer(auto_error=False)
 JWT_SECRET = os.getenv("JWT_SECRET", "change_me_to_a_long_random_string")
+
+
+class TextAmplifyRequest(BaseModel):
+    """Payload contract for duplicating text exactly four times."""
+
+    text: str = Field(..., min_length=1, max_length=4000)
+    separator: str = Field(
+        default=" ",
+        min_length=0,
+        max_length=8,
+        description="Glue applied between repeated snippets.",
+    )
+
+    @property
+    def normalized_text(self) -> str:
+        """Collapse internal whitespace for deterministic responses."""
+
+        return " ".join(self.text.split())
+
+
+class TextAmplifyResponse(BaseModel):
+    """Response returned by the four-times text amplifier."""
+
+    text: str
+    items: list[str]
+    count: int
+
+
+def _amplify_text(payload: TextAmplifyRequest) -> TextAmplifyResponse:
+    """Repeat text four times while preserving deterministic ordering."""
+
+    normalized = payload.normalized_text
+    items = [normalized] * 4
+    joined = payload.separator.join(items)
+    return TextAmplifyResponse(text=joined, items=items, count=len(items))
+
 
 def require_bearer(creds: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> Dict[str, Any]:
     if not creds or creds.scheme.lower() != "bearer" or not creds.credentials:
@@ -132,3 +169,13 @@ async def analyze(payload: dict, _auth = Depends(require_bearer)):
         data = _mock_response()
         data["why_it_wont_hit"] = "Model returned non-JSON; served robust fallback."
     return JSONResponse(data)
+
+
+@app.post("/api/text-amplify", response_model=TextAmplifyResponse)
+async def text_amplify(
+    payload: TextAmplifyRequest,
+    _auth: Dict[str, Any] = Depends(require_bearer),
+) -> TextAmplifyResponse:
+    """Return the provided text repeated four times per product requirement."""
+
+    return _amplify_text(payload)

@@ -1,29 +1,59 @@
-# GOVIRALL Contributor Guide
+# Codex Operating Guide for GOVIRALL
+
+## Environment & Setup
+- Always provision tooling via `./scripts/setup.sh`. The script creates `.venv`, pins `python3.11` (fallback to `python3`), upgrades `pip`, and installs `requirements.txt`.
+- Activate the environment with `source .venv/bin/activate` before running local commands.
+- Internet access is disabled by default. Do not reach out to external domains without explicit security approval.
+- Secrets belong in `.env.local` (ignored) or a managed secret store. Never paste secrets in prompts or commit history.
 
 ## Standard Commands
-- **Setup:** `./scripts/setup.sh`
-- **Format:** `ruff format .`
-- **Lint:** `ruff check .`
-- **Type Check:** `pyright`
-- **Tests:** `pytest`
-- **Security Scan:** `pip-audit`
+| Purpose | Command |
+| --- | --- |
+| Build / serve | `uvicorn main:app --host 0.0.0.0 --port 8000` |
+| Tests | `pytest` (add tests under `tests/`) |
+| Lint | `ruff check .` |
+| Format | `ruff format .` |
+| Typecheck | `mypy .` |
+| Security scan | `bandit -r .` |
+| Schema snapshot | `python -m scripts.schema_check` (create module when schema logic lands) |
+| Model snapshot | `python -m scripts.model_snapshot` (placeholder until modeling module exists) |
 
-## Style Rules
-- Prefer explicit imports; avoid wildcard imports.
-- Keep functions ≤ 60 lines; break complex logic into helpers.
-- FastAPI route handlers should return pydantic-friendly dicts or `Response` objects.
-- Tests must avoid mutating `sys.path`; rely on standard imports from project root.
+> If a command depends on a tool not yet vendored, add it to `requirements-dev.txt` (create as needed) and document the install.
 
-## Git Workflow
-- Branch names: `<type>/<short-description>` (e.g., `feat/auth-flow`).
-- Commits: Conventional Commits (`type(scope): summary`).
-- Every PR must trigger `@codex review` for automated analysis and include human approval before merge.
+## Python Style Rules
+- Target Python 3.11. Keep modules import-safe and avoid side effects on import.
+- Use type annotations everywhere. Prefer `pydantic` models for request/response bodies.
+- Format with Ruff (PEP 8 compatible, 88 char soft limit). No unused imports or wildcard imports.
+- Never wrap imports in `try/except`. Fail loudly when dependencies are missing.
+- Keep functions under 50 lines. Extract helpers for complex logic.
 
-## Test Data & Redaction
-- Use synthetic or anonymized fixtures only; never commit real user data or secrets.
-- Remove or mask credentials in logs and documentation.
+## Commit & Branch Strategy
+- Branch from `main` using `feature/<slug>` or `fix/<slug>` naming.
+- Commit messages follow Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`...).
+- Squash commits before merge if history is noisy.
 
-## Prompting & Completions
-- Prompts should state goals, constraints, and success checks succinctly.
-- Responses must be technical and cite sources when referencing repository content.
-- Avoid filler text; keep focus on actionable guidance.
+## Review Gates
+1. `pytest`
+2. `ruff check .`
+3. `ruff format --check .`
+4. `mypy .`
+5. `bandit -r .`
+6. Update docs/ADR when architecture changes.
+- Trigger Codex review by commenting `@codex review` on the PR.
+- Human reviewer sign-off is mandatory even when all checks pass; no auto-merge.
+
+## Test Data & Redaction Policy
+- Use synthetic or publicly shareable data in fixtures. No production exports.
+- Strip PII, access tokens, or client identifiers from examples.
+- Delete transient uploads after tests complete. Document fixtures in `/tests/fixtures/README.md` when added.
+
+## Prompt Patterns & Completion Constraints
+- Prompts should outline: **Context**, **Goal**, **Constraints**, **Acceptance tests**.
+- Responses must be concise, technical, and cite sources when referencing repo files or logs.
+- Avoid speculation; prefer actionable TODOs. Highlight security implications explicitly.
+- When uncertain, respond with clarifying questions before proceeding.
+
+## Operational Notes
+- Enable Codex code review in project settings.
+- Rotate API tokens quarterly; record rotations in the security log.
+- Maintain an audit trail in PR descriptions (tests, risk, rollout).
