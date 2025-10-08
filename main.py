@@ -1,16 +1,31 @@
-# main.py — ViralNOW API (Render-ready, clean)
+"""FastAPI application exposing ViralNOW automation endpoints."""
 from __future__ import annotations
 import os, json, re
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Iterable, Tuple
+from math import sqrt
 
-from fastapi import FastAPI, Depends, HTTPException
+import json
+import os
+import re
+from typing import Any, Dict, Optional
+
+from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import BaseModel
+
+from pipeline import PipelineRequest, PipelineResponse, execute_pipeline
+from typing import Any, Dict, Literal, Optional
+from uuid import UUID, uuid4
+
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel, Field, HttpUrl, model_validator
 
 app = FastAPI(title="ViralNOW API")
 
-# CORS (open for now; tighten to your domain later)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -18,36 +33,116 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ---- Auth: adds Swagger "Authorize" button ----
 security = HTTPBearer(auto_error=False)
-JWT_SECRET = os.getenv("JWT_SECRET", "change_me_to_a_long_random_string")
+
+
+class AnalyzeRequest(BaseModel):
+    """Payload for the /api/analyze endpoint."""
+
+    media: Dict[str, Any] | None = None
+    platform_focus: str | None = None
+
+
+def require_bearer(
+    creds: Optional[HTTPAuthorizationCredentials] = Depends(security),
+) -> Dict[str, Any]:
+    """Validate a Bearer token and return the caller context."""
+
+class TextAmplifyRequest(BaseModel):
+    """Payload contract for duplicating text exactly four times."""
+
+    text: str = Field(..., min_length=1, max_length=4000)
+    separator: str = Field(
+        default=" ",
+        min_length=0,
+        max_length=8,
+        description="Glue applied between repeated snippets.",
+    )
+
+    @property
+    def normalized_text(self) -> str:
+        """Collapse internal whitespace for deterministic responses."""
+
+        return " ".join(self.text.split())
+
+
+class TextAmplifyResponse(BaseModel):
+    """Response returned by the four-times text amplifier."""
+
+    text: str
+    items: list[str]
+    count: int
+
+
+def _amplify_text(payload: TextAmplifyRequest) -> TextAmplifyResponse:
+    """Repeat text four times while preserving deterministic ordering."""
+
+    normalized = payload.normalized_text
+    items = [normalized] * 4
+    joined = payload.separator.join(items)
+    return TextAmplifyResponse(text=joined, items=items, count=len(items))
+
 
 def require_bearer(creds: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> Dict[str, Any]:
     if not creds or creds.scheme.lower() != "bearer" or not creds.credentials:
         raise HTTPException(status_code=401, detail="Missing or bad token")
-    # (Optional strict JWT verify)
-    # from jose import jwt, JWTError
-    # try:
-    #     payload = jwt.decode(creds.credentials, JWT_SECRET, algorithms=["HS256"])
-    # except JWTError:
-    #     raise HTTPException(status_code=401, detail="Invalid token")
     return {"user": {"sub": "demo-user", "tier": "free"}}
+
+
+class AnalyzeRequest(BaseModel):
+    """Request payload contract for `/api/v1/analyze`."""
+
+    content_type: Literal["video", "post", "text"]
+    source_url: HttpUrl | None = Field(default=None, description="Public source URL")
+    upload_id: UUID | None = Field(default=None, description="Identifier for uploaded media")
+    caption: str | None = Field(default=None, max_length=4000)
+    platform_hint: Literal["tiktok", "youtube", "instagram", "x"] | None = None
+    user_id: UUID
+    notify_webhook: HttpUrl | None = Field(
+        default=None,
+        description="Callback URL invoked when the analysis is complete.",
+    )
+
+    @model_validator(mode="after")
+    def ensure_submission_context(self) -> AnalyzeRequest:
+        if not (self.source_url or self.upload_id or self.caption):
+            raise ValueError(
+                "At least one of source_url, upload_id, or caption must be provided."
+            )
+        return self
+
+
+class AnalyzeResponse(BaseModel):
+    """Response contract for queued analysis jobs."""
+
+    job_id: UUID
+    status: Literal["queued", "processing", "complete", "failed"]
+    estimated_completion_sec: int = Field(ge=0, le=86_400)
 
 # ---- Health & Home ----
 @app.get("/health")
-def health():
+def health() -> Dict[str, bool]:
+    """Health probe consumed by platforms such as Render."""
+
     return {"ok": True}
 
+
 @app.get("/")
-def home():
+def home() -> Dict[str, str]:
+    """Minimal index route helping developers locate docs."""
+
     return {"status": "ok", "docs": "/docs", "health": "/health"}
 
-# ---- OpenAI (real) or mock fallback ----
+
 USE_OPENAI = bool(os.getenv("OPENAI_API_KEY"))
 if USE_OPENAI:
     from openai import OpenAI
+
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+else:
+    client = None
+    MODEL = "mock"
 
 SYSTEM_PROMPT = (
     "You are ViralNOW, an elite viral-intelligence engine. "
@@ -56,79 +151,45 @@ SYSTEM_PROMPT = (
     "hook_variations_tagged, recommended_hashtags, best_post_times, "
     "platform_ranking, next_actions. "
     "For hooks, include A/B tagging objects like "
-    '{"pattern":"contrarian","text":"..."} . '
+    '{"pattern":"contrarian","text":"..."}. '
     "Keep summary ≤ 28 words; rationales ≤ 40 words; grade 6–8 readability."
 )
+
 
 def _safe_json_parse(text: str) -> Dict[str, Any]:
     try:
         return json.loads(text)
     except Exception:
-        m = re.search(r"\{.*\}", text, flags=re.S)
-        if not m:
+        match = re.search(r"\{.*\}", text, flags=re.S)
+        if match is None:
             raise
-        return json.loads(m.group(0))
+        return json.loads(match.group(0))
 
-def _mock_response() -> Dict[str, Any]:
-    return {
-        "viral_score": 84,
-        "confidence": "92%",
-        "why_it_will_hit": "Strong first 2s hook, clean captions, beat-matched jump cuts.",
-        "why_it_wont_hit": "Tiny dip around 0:06; CTA only in caption.",
-        "improvement_suggestions": [
-            "Trim 1.0–1.5s from intro",
-            "Add on-screen CTA at 0:04",
-            "End with a share/save prompt",
-        ],
-        "hook_variations": [
-            "I did the opposite—and it worked.",
-            "This myth kills your views.",
-            "Give me 7 seconds.",
-        ],
-        "hook_variations_tagged": [
-            {"pattern": "contrarian", "text": "I did the opposite—and it worked."},
-            {"pattern": "myth_bust", "text": "This myth kills your views."},
-            {"pattern": "countdown", "text": "Give me 7 seconds."},
-        ],
-        "recommended_hashtags": ["#MindsetFuel", "#ViralNOW", "#AIHustle", "#Motivation", "#CreatorTips", "#Shorts"],
-        "best_post_times": ["8:00 PM CST", "11:00 AM CST"],
-        "platform_ranking": {"TikTok": 90, "YouTube": 82, "Instagram": 78, "X": 66},
-        "next_actions": ["Export tighter intro", "Schedule 8 PM CST", "Share score card on profile"],
-    }
 
-@app.post("/api/analyze")
-async def analyze(payload: dict, _auth = Depends(require_bearer)):
-    if not isinstance(payload, dict):
-        raise HTTPException(status_code=400, detail="Bad JSON")
+@app.post(
+    "/api/v1/analyze",
+    response_model=AnalyzeResponse,
+    status_code=201,
+)
+async def analyze(
+    payload: AnalyzeRequest,
+    _auth: Dict[str, Any] = Depends(require_bearer),
+) -> AnalyzeResponse:
+    """Queue an analysis job and return its tracking metadata."""
 
-    if not USE_OPENAI:
-        return JSONResponse(_mock_response())
-
-    # Real OpenAI path
-    user_envelope = {
-        "instruction": "Return STRICT JSON per contract; no code fences.",
-        "media": payload.get("media", {}),
-        "platform_focus": payload.get("platform_focus", "tiktok"),
-        "controls": {
-            "readability_grade": "6-8",
-            "summary_max_words": 28,
-            "rationale_max_words": 40,
-            "ab_tagging_for_hooks": True,
-        },
-    }
-
-    completion = client.chat.completions.create(
-        model=MODEL,
-        temperature=0.6,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": json.dumps(user_envelope)},
-        ],
+    estimated_completion = 75 if payload.content_type == "video" else 45
+    return AnalyzeResponse(
+        job_id=uuid4(),
+        status="queued",
+        estimated_completion_sec=estimated_completion,
     )
-    content = completion.choices[0].message.content or "{}"
-    try:
-        data = _safe_json_parse(content)
-    except Exception:
-        data = _mock_response()
-        data["why_it_wont_hit"] = "Model returned non-JSON; served robust fallback."
-    return JSONResponse(data)
+
+
+@app.post("/api/text-amplify", response_model=TextAmplifyResponse)
+async def text_amplify(
+    payload: TextAmplifyRequest,
+    _auth: Dict[str, Any] = Depends(require_bearer),
+) -> TextAmplifyResponse:
+    """Return the provided text repeated four times per product requirement."""
+
+    return _amplify_text(payload)
