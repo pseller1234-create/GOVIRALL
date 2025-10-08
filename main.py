@@ -1,12 +1,18 @@
 # main.py — ViralNOW API (Render-ready, clean)
 from __future__ import annotations
-import os, json, re
-from typing import Optional, Dict, Any
+
+import json
+import os
+import re
+from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
+JsonDict = Dict[str, Any]
+AuthContext = Dict[str, Any]
 
 app = FastAPI(title="ViralNOW API")
 
@@ -22,7 +28,7 @@ app.add_middleware(
 security = HTTPBearer(auto_error=False)
 JWT_SECRET = os.getenv("JWT_SECRET", "change_me_to_a_long_random_string")
 
-def require_bearer(creds: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> Dict[str, Any]:
+def require_bearer(creds: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> AuthContext:
     if not creds or creds.scheme.lower() != "bearer" or not creds.credentials:
         raise HTTPException(status_code=401, detail="Missing or bad token")
     # (Optional strict JWT verify)
@@ -35,11 +41,11 @@ def require_bearer(creds: Optional[HTTPAuthorizationCredentials] = Depends(secur
 
 # ---- Health & Home ----
 @app.get("/health")
-def health():
+def health() -> Dict[str, bool]:
     return {"ok": True}
 
 @app.get("/")
-def home():
+def home() -> Dict[str, str]:
     return {"status": "ok", "docs": "/docs", "health": "/health"}
 
 # ---- OpenAI (real) or mock fallback ----
@@ -60,16 +66,23 @@ SYSTEM_PROMPT = (
     "Keep summary ≤ 28 words; rationales ≤ 40 words; grade 6–8 readability."
 )
 
-def _safe_json_parse(text: str) -> Dict[str, Any]:
+def _safe_json_parse(text: str) -> JsonDict:
     try:
-        return json.loads(text)
-    except Exception:
-        m = re.search(r"\{.*\}", text, flags=re.S)
-        if not m:
-            raise
-        return json.loads(m.group(0))
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", text, flags=re.S)
+        if match is None:
+            raise ValueError("No JSON object found in completion output") from None
+        fallback = json.loads(match.group(0))
+        if not isinstance(fallback, dict):
+            raise ValueError("Completion fragment was not a JSON object")
+        return fallback
 
-def _mock_response() -> Dict[str, Any]:
+    if not isinstance(parsed, dict):
+        raise ValueError("Completion payload must be a JSON object")
+    return parsed
+
+def _mock_response() -> JsonDict:
     return {
         "viral_score": 84,
         "confidence": "92%",
@@ -97,7 +110,7 @@ def _mock_response() -> Dict[str, Any]:
     }
 
 @app.post("/api/analyze")
-async def analyze(payload: dict, _auth = Depends(require_bearer)):
+async def analyze(payload: JsonDict, _auth: AuthContext = Depends(require_bearer)) -> JSONResponse:
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Bad JSON")
 
@@ -105,7 +118,7 @@ async def analyze(payload: dict, _auth = Depends(require_bearer)):
         return JSONResponse(_mock_response())
 
     # Real OpenAI path
-    user_envelope = {
+    user_envelope: JsonDict = {
         "instruction": "Return STRICT JSON per contract; no code fences.",
         "media": payload.get("media", {}),
         "platform_focus": payload.get("platform_focus", "tiktok"),
