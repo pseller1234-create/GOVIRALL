@@ -1,6 +1,8 @@
 from importlib import util
 from pathlib import Path
 
+from uuid import uuid4
+
 from fastapi.testclient import TestClient
 
 
@@ -29,15 +31,58 @@ def test_health_endpoint_reports_ok():
 
 
 def test_analyze_requires_bearer_token():
-    response = client.post("/api/analyze", json={"media": {}})
+    response = client.post(
+        "/api/v1/analyze",
+        json={
+            "content_type": "video",
+            "user_id": str(uuid4()),
+            "source_url": "https://example.com/video.mp4",
+        },
+    )
     assert response.status_code == 401
 
 
-def test_analyze_returns_mock_payload_when_authorized(monkeypatch):
+def test_analyze_rejects_missing_submission_context():
     response = client.post(
-        "/api/analyze",
-        headers={"Authorization": "Bearer test-token"},
-        json={"media": {"type": "video"}},
+        "/api/v1/analyze",
+        headers={"Authorization": "Bearer token"},
+        json={
+            "content_type": "video",
+            "user_id": str(uuid4()),
+        },
     )
-    assert response.status_code == 200
-    assert response.json() == main._mock_response()
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert any("At least one" in err["msg"] for err in detail)
+
+
+def test_analyze_rejects_invalid_content_type():
+    response = client.post(
+        "/api/v1/analyze",
+        headers={"Authorization": "Bearer token"},
+        json={
+            "content_type": "audio",
+            "caption": "Test caption",
+            "user_id": str(uuid4()),
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_analyze_returns_queued_job_metadata():
+    response = client.post(
+        "/api/v1/analyze",
+        headers={"Authorization": "Bearer test-token"},
+        json={
+            "content_type": "video",
+            "user_id": str(uuid4()),
+            "source_url": "https://example.com/clip.mp4",
+            "platform_hint": "tiktok",
+            "notify_webhook": "https://example.com/hook",
+        },
+    )
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["status"] == "queued"
+    assert isinstance(payload["estimated_completion_sec"], int)
+    assert payload["estimated_completion_sec"] >= 0
