@@ -1,15 +1,23 @@
 # Deploy FastAPI on Render
 
-Use this repo as a template to deploy a Python [FastAPI](https://fastapi.tiangolo.com) service on Render.
+Use this repo as a template to deploy a Python
+[FastAPI](https://fastapi.tiangolo.com) service on Render.
 
-See https://render.com/docs/deploy-fastapi or follow the steps below:
+See https://render.com/docs/deploy-fastapi or follow the steps below.
+
+## System Design Documentation
+Detailed architecture, API contracts, and rollout plans for the GOVIRALL platform live in
+[`docs/system_design.md`](docs/system_design.md).
 
 ## Manual Steps
 
-1. You may use this repository directly or [create your own repository from this template](https://github.com/render-examples/fastapi/generate) if you'd like to customize the code.
+1. You may use this repository directly or
+   [create your own repository from this template][fastapi-template]
+   if you'd like to customize the code.
 2. Create a new Web Service on Render.
 3. Specify the URL to your new repository or this repository.
-4. Render will automatically detect that you are deploying a Python service and use `pip` to download the dependencies.
+4. Render will automatically detect that you are deploying a Python service
+   and use `pip` to download the dependencies.
 5. Specify the following as the Start Command.
 
     ```shell
@@ -20,105 +28,83 @@ See https://render.com/docs/deploy-fastapi or follow the steps below:
 
 Or simply click:
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/render-examples/fastapi)
+[![Deploy to Render][render-badge]][render-deploy]
 
-## Thanks
+## GOVIRALL Product Context
 
-Thanks to [Harish](https://harishgarg.com) for the [inspiration to create a FastAPI quickstart for Render](https://twitter.com/harishkgarg/status/1435084018677010434) and for some sample code!
+You have an existing Viral Score App that estimates how “viral” a post or asset might become
+based on early engagement. For this iteration, the goal is to build on the current product to
+improve prediction accuracy, expand data sources, and expose scores via an API/UI for
+creators and growth teams.
 
-GOVIRAL
-You have an existing Viral Score App that estimates how “viral” a post or asset might become based on early engagement. For this iteration, the goal is to build on the current product to (assumption) improve prediction accuracy, expand data sources, and expose scores via an API/UI for creators and growth teams. 🧠 App Name (Working Title): ViralNow / GoViralNow
+### App Name (Working Title)
+- **ViralNow / GoViralNow**
 
-Tagline: “Predict. Optimize. Go Viral.”
+### Tagline
+- “Predict. Optimize. Go Viral.”
 
-🚀 App Overview
+### App Overview
 
-ViralNow is an AI-powered web and mobile application that analyzes short-form videos, posts, or links (TikTok, YouTube Shorts, Instagram Reels, X, etc.) to generate a 0–100 “Viral Score” — a scientific measure of how likely a piece of content is to go viral.
+ViralNow is an AI-powered web and mobile application that analyzes short-form videos, posts,
+ or links (TikTok, YouTube Shorts, Instagram Reels, X, etc.) to generate a 0–100 “Viral Score” — a
+ scientific measure of how likely a piece of content is to go viral.
 
-The app helps creators, brands, and agencies understand what makes content blow up — and provides specific, data-backed suggestions to improve performance before posting.
+The app helps creators, brands, and agencies understand what makes content blow up — and provides
+specific, data-backed suggestions to improve performance before posting.
 
-Users can upload a video, paste a link, or input text. The system then runs AI analysis (using NLP + CV models) and returns a full viral intelligence report in seconds.
+Users can upload a video, paste a link, or input text. The system then runs AI analysis (using NLP +
+CV models) and returns a full viral intelligence report in seconds.
 
-🧩 Core Features
+### Core Features
+- **Upload or Link Input**
+  - Accepts video, post URL, or raw text (caption/script).
+  - Auto-detects platform (TikTok, YouTube, Instagram, X).
+- **AI Viral Score Engine**
+  - Calculates a 0–100 score + confidence %.
+  - Shows how it performs across each platform.
+  - Uses visual, audio, and text analysis (hook strength, pacing, emotion, clarity,
+    engagement cues).
+- **Why It Works / Why It Won’t**
+  - Bullet summary explaining strengths and weaknesses.
+  - “Missing Elements” section (e.g., “No emotional hook,” “Weak retention curve,”
+    “Text overlay too late”).
+- **Optimization Suggestions**
+  - Auto-generate 5 improved hook lines.
+  - Suggest best posting times, hashtags, and sound types.
+  - Recommend captions, pacing tweaks, or thumbnail ideas.
+- **Competitive Context**
+  - Compare to trending posts in the same niche.
+  - Provide actionable feedback (e.g., “+captions +faster cuts +high contrast”).
+- **Creator Dashboard**
+  - View history of uploads and progress over time.
+  - Track average viral score, niche success rate, and engagement trendlines.
+- **Pro Tier / Academy (Future)**
+  - Access “Viral Blueprint” lessons and case studies.
+  - Sandbox “Prediction Lab” for testing content drafts before posting.
+  - Community leaderboard and gamified growth challenges.
 
-Upload or Link Input
+### Tech Stack (Planned)
+- **Backend**: FastAPI (Python), Redis (rate limits + queues), PostgreSQL (analytics)
+- **Frontend**: React + Tailwind (Web), React Native (Mobile)
+- **AI Models**: OpenAI (text), CLIP / Whisper / Vision Transformers (video + audio)
+- **Deployment**: Docker + Render / Fly.io
+- **Security**: JWT Auth, Argon2 Hashing, API key system
+- **Integrations**: YouTube Data API, TikTok Insights, Google Trends
 
-Accepts video, post URL, or raw text (caption/script).
+### Target Users
+- Content creators — YouTubers, TikTokers, influencers
+- Marketing teams / agencies — running campaigns and audits
+- Educators / coaches — teaching viral content strategy
 
-Auto-detects platform (TikTok, YouTube, Instagram, X).
+### Why It’s Unique
+Unlike typical analytics tools, ViralNow focuses on pre-launch prediction and creative feedback, not
+just post-performance stats. It gives creators the power to simulate the algorithm — before
+publishing.
 
-AI Viral Score Engine
+### Vision
+To become the global standard for viral content prediction — the “credit score” for social media
+success.
 
-Calculates a 0–100 score + confidence %.
-
-Shows how it performs across each platform.
-
-Uses visual, audio, and text analysis (hook strength, pacing, emotion, clarity, engagement cues).
-
-Why It Works / Why It Won’t
-
-Bullet summary explaining strengths and weaknesses.
-
-“Missing Elements” section (e.g., “No emotional hook,” “Weak retention curve,” “Text overlay too late”).
-
-Optimization Suggestions
-
-Auto-generate 5 improved hook lines.
-
-Suggest best posting times, hashtags, and sound types.
-
-Recommend captions, pacing tweaks, or thumbnail ideas.
-
-Competitive Context
-
-Compare to trending posts in the same niche.
-
-“+captions +faster cuts +high contrast” style feedback.
-
-Creator Dashboard
-
-View history of uploads and progress over time.
-
-Track average viral score, niche success rate, and engagement trendlines.
-
-Pro Tier / Academy (Future)
-
-Access “Viral Blueprint” lessons and case studies.
-
-Sandbox “Prediction Lab” for testing content drafts before posting.
-
-Community leaderboard and gamified growth challenges.
-
-🧠 Tech Stack (Planned)
-
-Backend: FastAPI (Python), Redis (rate limits + queues), PostgreSQL (analytics)
-
-Frontend: React + Tailwind (Web), React Native (Mobile)
-
-AI Models: OpenAI (text), CLIP / Whisper / Vision Transformers (video + audio)
-
-Deployment: Docker + Render / Fly.io
-
-Security: JWT Auth, Argon2 Hashing, API Key system
-
-Integrations: YouTube Data API, TikTok Insights, Google Trends
-
-💡 Target Users
-
-Content Creators — YouTubers, TikTokers, Influencers
-
-Marketing Teams / Agencies — running campaigns and audits
-
-Educators / Coaches — teaching viral content strategy
-
-🧩 Why It’s Unique
-
-Unlike typical “analytics” tools, ViralNow focuses on pre-launch prediction and creative feedback, not just post-performance stats. It gives creators the power to simulate the algorithm — before publishing.
-
-🏁 Vision
-
-To become the global standard for viral content prediction — the “credit score” for social media success.
-
-## Build Reference
-
-See [`BUILDING_REFERENCE.md`](BUILDING_REFERENCE.md) for the end-to-end platform blueprint, data contracts, roadmap, and deployment notes that support the ViralNow stack.
+[fastapi-template]: https://github.com/render-examples/fastapi/generate
+[render-badge]: https://render.com/images/deploy-to-render-button.svg
+[render-deploy]: https://render.com/deploy?repo=https://github.com/render-examples/fastapi
