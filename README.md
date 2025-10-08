@@ -1,124 +1,66 @@
-# Deploy FastAPI on Render
+# ViralNOW API
 
-Use this repo as a template to deploy a Python [FastAPI](https://fastapi.tiangolo.com) service on Render.
+ViralNOW is a multimodal creator operating system that predicts, explains, and improves the virality and ROI of any creative asset before it ships. The FastAPI service in this repository exposes the core scoring engine that powers actionable intelligence for shorts, long-form video, carousels, thumbnails, audio, scripts, and newsletters.
 
-See https://render.com/docs/deploy-fastapi or follow the steps below:
+## Features
 
-## Manual Steps
+- **Unified Analysis Endpoint** – Submit cross-format creative payloads and receive a 360° viral intelligence report with strengths, risks, suggested experiments, hook variants, and scheduling guidance.
+- **Multi-Platform Scorecard** – Weighted platform rankings incorporate format fit, heuristic biases, and audience signals so growth teams know where to launch first.
+- **Actionable Recommendations** – Deterministic heuristics synthesize creative signals, optimization toggles, and benchmark lifts into next steps that can be automated in creator workflows.
+- **Render Ready** – Ships with health endpoints, bearer auth dependency, and CORS configuration for deployment on Render or any container platform.
 
-1. You may use this repository directly or [create your own repository from this template](https://github.com/render-examples/fastapi/generate) if you'd like to customize the code.
-2. Create a new Web Service on Render.
-3. Specify the URL to your new repository or this repository.
-4. Render will automatically detect that you are deploying a Python service and use `pip` to download the dependencies.
-5. Specify the following as the Start Command.
+## Getting Started
 
-    ```shell
-    uvicorn main:app --host 0.0.0.0 --port $PORT
-    ```
+```bash
+./scripts/setup.sh  # provisions .venv and installs dependencies (requires network access)
+source .venv/bin/activate
+uvicorn main:app --reload
+```
 
-6. Click Create Web Service.
+The analyze endpoint expects a JSON payload that matches `ContentPayload` in [`app/domain/schemas.py`](app/domain/schemas.py). Example request:
 
-Or simply click:
+```bash
+curl -X POST http://localhost:8000/api/analyze \
+  -H "Authorization: Bearer demo" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "format": "short_form_video",
+        "primary_platform": "tiktok",
+        "target_platforms": ["tiktok", "youtube", "instagram"],
+        "title": "This hook saved our launch",
+        "transcript": "Nobody told you the 3-rule launch. Now fix your funnel.",
+        "hashtags": ["growth", "launch"],
+        "creative": {
+          "hook_seconds": 2.4,
+          "avg_scene_length_seconds": 1.1,
+          "captions_present": true,
+          "narration_present": true,
+          "pacing_label": "fast",
+          "emotional_tone": "high"
+        },
+        "optimization": {
+          "call_to_action": "on_screen",
+          "has_thumbnail_variant": true,
+          "crosspost_targets": ["youtube"],
+          "posting_window": ["Tuesday 8:00 PM"]
+        },
+        "audience_pulse": [
+          {"metric": "views", "value": 45000, "benchmark": 23000},
+          {"metric": "watch_time", "value": 62, "benchmark": 48}
+        ]
+      }'
+```
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/render-examples/fastapi)
+## Testing
 
-## Thanks
+```bash
+pytest
+```
 
-Thanks to [Harish](https://harishgarg.com) for the [inspiration to create a FastAPI quickstart for Render](https://twitter.com/harishkgarg/status/1435084018677010434) and for some sample code!
+## Deployment
 
-GOVIRAL
-You have an existing Viral Score App that estimates how “viral” a post or asset might become based on early engagement. For this iteration, the goal is to build on the current product to (assumption) improve prediction accuracy, expand data sources, and expose scores via an API/UI for creators and growth teams. 🧠 App Name (Working Title): ViralNow / GoViralNow
+- Build an image using the provided `render.yaml` or your infrastructure pipeline.
+- Configure environment variables (e.g., `VIRALNOW_APP_NAME`, `VIRALNOW_ENVIRONMENT`, `VIRALNOW_JWT_SECRET`).
+- Frontload authentication in the calling service; upgrade the `require_bearer` dependency once JWT issuer is available.
 
-Tagline: “Predict. Optimize. Go Viral.”
-
-🚀 App Overview
-
-ViralNow is an AI-powered web and mobile application that analyzes short-form videos, posts, or links (TikTok, YouTube Shorts, Instagram Reels, X, etc.) to generate a 0–100 “Viral Score” — a scientific measure of how likely a piece of content is to go viral.
-
-The app helps creators, brands, and agencies understand what makes content blow up — and provides specific, data-backed suggestions to improve performance before posting.
-
-Users can upload a video, paste a link, or input text. The system then runs AI analysis (using NLP + CV models) and returns a full viral intelligence report in seconds.
-
-🧩 Core Features
-
-Upload or Link Input
-
-Accepts video, post URL, or raw text (caption/script).
-
-Auto-detects platform (TikTok, YouTube, Instagram, X).
-
-AI Viral Score Engine
-
-Calculates a 0–100 score + confidence %.
-
-Shows how it performs across each platform.
-
-Uses visual, audio, and text analysis (hook strength, pacing, emotion, clarity, engagement cues).
-
-Why It Works / Why It Won’t
-
-Bullet summary explaining strengths and weaknesses.
-
-“Missing Elements” section (e.g., “No emotional hook,” “Weak retention curve,” “Text overlay too late”).
-
-Optimization Suggestions
-
-Auto-generate 5 improved hook lines.
-
-Suggest best posting times, hashtags, and sound types.
-
-Recommend captions, pacing tweaks, or thumbnail ideas.
-
-Competitive Context
-
-Compare to trending posts in the same niche.
-
-“+captions +faster cuts +high contrast” style feedback.
-
-Creator Dashboard
-
-View history of uploads and progress over time.
-
-Track average viral score, niche success rate, and engagement trendlines.
-
-Pro Tier / Academy (Future)
-
-Access “Viral Blueprint” lessons and case studies.
-
-Sandbox “Prediction Lab” for testing content drafts before posting.
-
-Community leaderboard and gamified growth challenges.
-
-🧠 Tech Stack (Planned)
-
-Backend: FastAPI (Python), Redis (rate limits + queues), PostgreSQL (analytics)
-
-Frontend: React + Tailwind (Web), React Native (Mobile)
-
-AI Models: OpenAI (text), CLIP / Whisper / Vision Transformers (video + audio)
-
-Deployment: Docker + Render / Fly.io
-
-Security: JWT Auth, Argon2 Hashing, API Key system
-
-Integrations: YouTube Data API, TikTok Insights, Google Trends
-
-💡 Target Users
-
-Content Creators — YouTubers, TikTokers, Influencers
-
-Marketing Teams / Agencies — running campaigns and audits
-
-Educators / Coaches — teaching viral content strategy
-
-🧩 Why It’s Unique
-
-Unlike typical “analytics” tools, ViralNow focuses on pre-launch prediction and creative feedback, not just post-performance stats. It gives creators the power to simulate the algorithm — before publishing.
-
-🏁 Vision
-
-To become the global standard for viral content prediction — the “credit score” for social media success.
-
-## Build Reference
-
-See [`BUILDING_REFERENCE.md`](BUILDING_REFERENCE.md) for the end-to-end platform blueprint, data contracts, roadmap, and deployment notes that support the ViralNow stack.
+Refer to [`BUILDING_REFERENCE.md`](BUILDING_REFERENCE.md) for system design notes and roadmap context.
