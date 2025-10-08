@@ -1,37 +1,59 @@
-# Repository Operations Guide
+# Codex Operating Guide for GOVIRALL
+
+## Environment & Setup
+- Always provision tooling via `./scripts/setup.sh`. The script creates `.venv`, pins `python3.11` (fallback to `python3`), upgrades `pip`, and installs `requirements.txt`.
+- Activate the environment with `source .venv/bin/activate` before running local commands.
+- Internet access is disabled by default. Do not reach out to external domains without explicit security approval.
+- Secrets belong in `.env.local` (ignored) or a managed secret store. Never paste secrets in prompts or commit history.
 
 ## Standard Commands
-- **Install / Setup**: `./scripts/setup.sh`
-- **Format**: `ruff format .`
-- **Lint**: `ruff check .`
-- **Type Check**: `mypy .`
-- **Test**: `pytest`
-- **Security Scan**: `bandit -r .`
-- **License Compliance**: `pip-licenses`
+| Purpose | Command |
+| --- | --- |
+| Build / serve | `uvicorn main:app --host 0.0.0.0 --port 8000` |
+| Tests | `pytest` (add tests under `tests/`) |
+| Lint | `ruff check .` |
+| Format | `ruff format .` |
+| Typecheck | `mypy .` |
+| Security scan | `bandit -r .` |
+| Schema snapshot | `python -m scripts.schema_check` (create module when schema logic lands) |
+| Model snapshot | `python -m scripts.model_snapshot` (placeholder until modeling module exists) |
 
-Always run tests after making changes. Lint, type check, and security scans are required before requesting review.
+> If a command depends on a tool not yet vendored, add it to `requirements-dev.txt` (create as needed) and document the install.
 
-## Style Rules
-- Python must follow PEP 8, prefer `ruff` for enforcement.
-- Keep functions small and pure when possible; avoid side effects in module scope.
-- Markdown should use ATX headings, wrap at ~100 characters, and keep tables GitHub-compatible.
-- Do not add try/except around imports solely to suppress errors.
+## Python Style Rules
+- Target Python 3.11. Keep modules import-safe and avoid side effects on import.
+- Use type annotations everywhere. Prefer `pydantic` models for request/response bodies.
+- Format with Ruff (PEP 8 compatible, 88 char soft limit). No unused imports or wildcard imports.
+- Never wrap imports in `try/except`. Fail loudly when dependencies are missing.
+- Keep functions under 50 lines. Extract helpers for complex logic.
 
-## Commit & Branching Conventions
-- Use Conventional Commit messages (e.g., `feat:`, `fix:`, `docs:`, `chore:`).
-- Branches should be kebab-case, prefixed with the workstream when relevant (e.g., `feature/api-auth`).
-- Rebase on the default branch before opening a PR; avoid merge commits in feature branches.
+## Commit & Branch Strategy
+- Branch from `main` using `feature/<slug>` or `fix/<slug>` naming.
+- Commit messages follow Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`...).
+- Squash commits before merge if history is noisy.
 
 ## Review Gates
-- Push code only after all mandatory checks (format, lint, type, test, security, license) pass locally.
-- On every PR, comment `@codex review` to trigger automated analysis. Human approval is required before merge.
+1. `pytest`
+2. `ruff check .`
+3. `ruff format --check .`
+4. `mypy .`
+5. `bandit -r .`
+6. Update docs/ADR when architecture changes.
+- Trigger Codex review by commenting `@codex review` on the PR.
+- Human reviewer sign-off is mandatory even when all checks pass; no auto-merge.
 
-## Test Data & Redaction
-- Use synthetic or anonymized data in fixtures and examples.
-- Redact or mask any user-generated or sensitive data before committing.
-- Secrets must reside in environment variables or `.env.local`; never commit secrets.
+## Test Data & Redaction Policy
+- Use synthetic or publicly shareable data in fixtures. No production exports.
+- Strip PII, access tokens, or client identifiers from examples.
+- Delete transient uploads after tests complete. Document fixtures in `/tests/fixtures/README.md` when added.
 
-## Prompting & Completion Constraints
-- Prompts should clearly state requirements, expected outputs, and validation steps.
-- Responses must be succinct, technical, and cite sources when referencing repository content.
-- Avoid filler language; focus on actionable guidance and reproducibility.
+## Prompt Patterns & Completion Constraints
+- Prompts should outline: **Context**, **Goal**, **Constraints**, **Acceptance tests**.
+- Responses must be concise, technical, and cite sources when referencing repo files or logs.
+- Avoid speculation; prefer actionable TODOs. Highlight security implications explicitly.
+- When uncertain, respond with clarifying questions before proceeding.
+
+## Operational Notes
+- Enable Codex code review in project settings.
+- Rotate API tokens quarterly; record rotations in the security log.
+- Maintain an audit trail in PR descriptions (tests, risk, rollout).
