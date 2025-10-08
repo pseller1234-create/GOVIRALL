@@ -26,6 +26,36 @@ Detailed architecture, API contracts, and rollout plans for the GOVIRALL platfor
 
 6. Click Create Web Service.
 
+## Validation Endpoint
+
+The API now exposes `POST /api/validate` to benchmark ViralNow predictions against real performance data over a 72-hour window. Supply:
+
+- `predicted.views`, `predicted.likes`, `predicted.comments`: time-aligned arrays representing the model's expectations.
+- `predicted.platform_scores`: optional per-platform projections, e.g. `{"tiktok": [...], "youtube_shorts": [...]}`.
+- `actual.public_api` and `actual.trend_benchmarks`: engagement curves sourced from public APIs and trend services.
+- `actual.platform_specific`: realized outcomes for each platform model you track.
+
+Example payload:
+
+```json
+{
+  "predicted": {
+    "views": [1200, 2400, 3600],
+    "likes": [140, 310, 520],
+    "comments": [12, 25, 41],
+    "platform_scores": {"tiktok": [0.91, 0.94, 0.96], "youtube_shorts": [0.77, 0.81, 0.84]}
+  },
+  "actual": {
+    "public_api": {"views": [1100, 2500, 3500], "likes": [130, 300, 500], "comments": [10, 23, 40]},
+    "trend_benchmarks": {"views": [1000, 2200, 3100], "likes": [115, 270, 430], "comments": [9, 21, 33]},
+    "platform_specific": {"tiktok": [0.89, 0.93, 0.95], "youtube_shorts": [0.74, 0.80, 0.82]}
+  },
+  "window_hours": 72
+}
+```
+
+The service returns Pearson correlations per source plus an overall score. A run is considered successful when the aggregate correlation meets or exceeds the default `0.85` threshold.
+
 Or simply click:
 
 [![Deploy to Render][render-badge]][render-deploy]

@@ -1,5 +1,8 @@
 """FastAPI application exposing ViralNOW automation endpoints."""
 from __future__ import annotations
+import os, json, re
+from typing import Optional, Dict, Any, Iterable, Tuple
+from math import sqrt
 
 import json
 import os
