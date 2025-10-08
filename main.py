@@ -8,6 +8,8 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
+from emotion_factor import EmotionFactorRequest, calculator
+
 app = FastAPI(title="ViralNOW API")
 
 # CORS (open for now; tighten to your domain later)
@@ -132,3 +134,12 @@ async def analyze(payload: dict, _auth = Depends(require_bearer)):
         data = _mock_response()
         data["why_it_wont_hit"] = "Model returned non-JSON; served robust fallback."
     return JSONResponse(data)
+
+
+@app.post("/api/emotion-factor")
+async def emotion_factor(request: EmotionFactorRequest, _auth = Depends(require_bearer)):
+    try:
+        result = calculator.score(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return JSONResponse(result)
