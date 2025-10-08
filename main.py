@@ -1,7 +1,8 @@
 # main.py — ViralNOW API (Render-ready, clean)
 from __future__ import annotations
 import os, json, re
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Iterable, Tuple
+from math import sqrt
 
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import JSONResponse
@@ -132,3 +133,123 @@ async def analyze(payload: dict, _auth = Depends(require_bearer)):
         data = _mock_response()
         data["why_it_wont_hit"] = "Model returned non-JSON; served robust fallback."
     return JSONResponse(data)
+
+
+def _pearson_correlation(a: Iterable[float], b: Iterable[float]) -> Optional[float]:
+    a_list = [float(x) for x in a]
+    b_list = [float(x) for x in b]
+    if len(a_list) != len(b_list) or len(a_list) < 2:
+        return None
+    mean_a = sum(a_list) / len(a_list)
+    mean_b = sum(b_list) / len(b_list)
+    cov = sum((x - mean_a) * (y - mean_b) for x, y in zip(a_list, b_list))
+    var_a = sum((x - mean_a) ** 2 for x in a_list)
+    var_b = sum((y - mean_b) ** 2 for y in b_list)
+    denom = sqrt(var_a) * sqrt(var_b)
+    if denom == 0:
+        return None
+    return cov / denom
+
+
+def _average(values: Iterable[Optional[float]]) -> Optional[float]:
+    filtered = [v for v in values if isinstance(v, (int, float))]
+    if not filtered:
+        return None
+    return sum(filtered) / len(filtered)
+
+
+def _compute_metric_correlations(predicted: Dict[str, Iterable[float]], actual: Dict[str, Iterable[float]]) -> Tuple[Dict[str, Optional[float]], Optional[float]]:
+    correlations: Dict[str, Optional[float]] = {}
+    for metric, predicted_series in predicted.items():
+        actual_series = actual.get(metric)
+        if actual_series is None:
+            correlations[metric] = None
+            continue
+        correlations[metric] = _pearson_correlation(predicted_series, actual_series)
+    overall = _average(correlations.values())
+    if overall is not None:
+        correlations["overall"] = overall
+    return correlations, overall
+
+
+def _validate_payload_section(section: Any, expected_type: type, name: str) -> Any:
+    if section is None:
+        raise HTTPException(status_code=400, detail=f"Missing {name} section")
+    if not isinstance(section, expected_type):
+        raise HTTPException(status_code=400, detail=f"{name} must be a {expected_type.__name__}")
+    return section
+
+
+@app.post("/api/validate")
+async def validate_predictions(payload: dict, _auth = Depends(require_bearer)):
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Bad JSON")
+
+    predicted = _validate_payload_section(payload.get("predicted"), dict, "predicted")
+    actual = _validate_payload_section(payload.get("actual"), dict, "actual")
+
+    predicted_core = {
+        key: value
+        for key, value in predicted.items()
+        if key in {"views", "likes", "comments"} and isinstance(value, list)
+    }
+    if not predicted_core:
+        raise HTTPException(status_code=400, detail="predicted must include lists for views/likes/comments")
+
+    public_api = _validate_payload_section(actual.get("public_api"), dict, "actual.public_api")
+    trend_benchmarks = _validate_payload_section(actual.get("trend_benchmarks"), dict, "actual.trend_benchmarks")
+
+    platform_scores = predicted.get("platform_scores", {})
+    if platform_scores and not isinstance(platform_scores, dict):
+        raise HTTPException(status_code=400, detail="platform_scores must be an object of lists")
+    actual_platforms = actual.get("platform_specific", {})
+    if actual_platforms and not isinstance(actual_platforms, dict):
+        raise HTTPException(status_code=400, detail="actual.platform_specific must be an object")
+
+    correlations = {}
+    overall_scores = []
+
+    public_corr, public_overall = _compute_metric_correlations(predicted_core, public_api)
+    correlations["public_api"] = public_corr
+    if public_overall is not None:
+        overall_scores.append(public_overall)
+
+    trend_corr, trend_overall = _compute_metric_correlations(predicted_core, trend_benchmarks)
+    correlations["trend_benchmarks"] = trend_corr
+    if trend_overall is not None:
+        overall_scores.append(trend_overall)
+
+    platform_corr = {}
+    for platform, predicted_series in platform_scores.items():
+        actual_series = None
+        if isinstance(predicted_series, list):
+            actual_series = actual_platforms.get(platform)
+        if not isinstance(predicted_series, list) or not isinstance(actual_series, list):
+            platform_corr[platform] = None
+            continue
+        platform_corr[platform] = _pearson_correlation(predicted_series, actual_series)
+    platform_overall = _average(platform_corr.values())
+    if platform_corr:
+        if platform_overall is not None:
+            platform_corr["overall"] = platform_overall
+            overall_scores.append(platform_overall)
+        correlations["platform_specific"] = platform_corr
+
+    overall = _average(overall_scores)
+    threshold = float(payload.get("threshold", 0.85))
+    window_hours = int(payload.get("window_hours", 72))
+
+    response = {
+        "window_hours": window_hours,
+        "threshold": threshold,
+        "overall_correlation": overall,
+        "correlations": correlations,
+        "meets_threshold": overall is not None and overall >= threshold,
+        "notes": "Correlations computed against public APIs, trend benchmarks, and platform models."
+    }
+
+    if overall is None:
+        response["meets_threshold"] = False
+        response["notes"] = "Insufficient data to evaluate correlation across sources."
+
+    return JSONResponse(response)
