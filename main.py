@@ -1,9 +1,18 @@
-# main.py — ViralNOW API (Render-ready, clean)
+"""FastAPI application exposing ViralNOW automation endpoints."""
 from __future__ import annotations
 
 import json
 import os
 import re
+from typing import Any, Dict, Optional
+
+from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import BaseModel
+
+from pipeline import PipelineRequest, PipelineResponse, execute_pipeline
 from typing import Any, Dict, Literal, Optional
 from uuid import UUID, uuid4
 
@@ -14,7 +23,6 @@ from pydantic import BaseModel, Field, HttpUrl, model_validator
 
 app = FastAPI(title="ViralNOW API")
 
-# CORS (open for now; tighten to your domain later)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,10 +30,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ---- Auth: adds Swagger "Authorize" button ----
 security = HTTPBearer(auto_error=False)
-JWT_SECRET = os.getenv("JWT_SECRET", "change_me_to_a_long_random_string")
 
+
+class AnalyzeRequest(BaseModel):
+    """Payload for the /api/analyze endpoint."""
+
+    media: Dict[str, Any] | None = None
+    platform_focus: str | None = None
+
+
+def require_bearer(
+    creds: Optional[HTTPAuthorizationCredentials] = Depends(security),
+) -> Dict[str, Any]:
+    """Validate a Bearer token and return the caller context."""
 
 class TextAmplifyRequest(BaseModel):
     """Payload contract for duplicating text exactly four times."""
@@ -65,12 +83,6 @@ def _amplify_text(payload: TextAmplifyRequest) -> TextAmplifyResponse:
 def require_bearer(creds: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> Dict[str, Any]:
     if not creds or creds.scheme.lower() != "bearer" or not creds.credentials:
         raise HTTPException(status_code=401, detail="Missing or bad token")
-    # (Optional strict JWT verify)
-    # from jose import jwt, JWTError
-    # try:
-    #     payload = jwt.decode(creds.credentials, JWT_SECRET, algorithms=["HS256"])
-    # except JWTError:
-    #     raise HTTPException(status_code=401, detail="Invalid token")
     return {"user": {"sub": "demo-user", "tier": "free"}}
 
 
@@ -106,21 +118,50 @@ class AnalyzeResponse(BaseModel):
 
 # ---- Health & Home ----
 @app.get("/health")
-def health():
+def health() -> Dict[str, bool]:
+    """Health probe consumed by platforms such as Render."""
+
     return {"ok": True}
 
+
 @app.get("/")
-def home():
+def home() -> Dict[str, str]:
+    """Minimal index route helping developers locate docs."""
+
     return {"status": "ok", "docs": "/docs", "health": "/health"}
+
+
+USE_OPENAI = bool(os.getenv("OPENAI_API_KEY"))
+if USE_OPENAI:
+    from openai import OpenAI
+
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+else:
+    client = None
+    MODEL = "mock"
+
+SYSTEM_PROMPT = (
+    "You are ViralNOW, an elite viral-intelligence engine. "
+    "Return STRICT JSON with keys: viral_score, confidence, why_it_will_hit, "
+    "why_it_wont_hit, improvement_suggestions, hook_variations, "
+    "hook_variations_tagged, recommended_hashtags, best_post_times, "
+    "platform_ranking, next_actions. "
+    "For hooks, include A/B tagging objects like "
+    '{"pattern":"contrarian","text":"..."}. '
+    "Keep summary ≤ 28 words; rationales ≤ 40 words; grade 6–8 readability."
+)
+
 
 def _safe_json_parse(text: str) -> Dict[str, Any]:
     try:
         return json.loads(text)
     except Exception:
-        m = re.search(r"\{.*\}", text, flags=re.S)
-        if not m:
+        match = re.search(r"\{.*\}", text, flags=re.S)
+        if match is None:
             raise
-        return json.loads(m.group(0))
+        return json.loads(match.group(0))
+
 
 @app.post(
     "/api/v1/analyze",
